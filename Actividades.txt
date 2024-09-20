@@ -1,0 +1,154 @@
+create database aa15_bd
+
+
+EJERCICIO 1
+
+ CREATE TABLE empleados (
+ id SERIAL PRIMARY KEY,
+ nombre VARCHAR(100),
+ puesto VARCHAR(100),
+ salario DECIMAL(10, 2)
+ );
+ CREATE TABLE auditoria_empleados (
+ id SERIAL PRIMARY KEY,
+ id_empleado INT,
+ accion VARCHAR(10),
+ fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+ );
+
+--1_Función que registre los cambios en la tabla auditoria_empleados.--
+
+CREATE OR REPLACE FUNCTION registrar_auditoria()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF TG_OP = 'INSERT' THEN
+        INSERT INTO auditoria_empleados (id_empleado, accion) 
+        VALUES (NEW.id, 'INSERT');
+    ELSIF TG_OP = 'UPDATE' THEN
+        INSERT INTO auditoria_empleados (id_empleado, accion) 
+        VALUES (NEW.id, 'UPDATE');
+    ELSIF TG_OP = 'DELETE' THEN
+        INSERT INTO auditoria_empleados (id_empleado, accion) 
+        VALUES (OLD.id, 'DELETE');
+    END IF;
+    RETURN NULL; -- No se necesita devolver nada en este caso
+END;
+$$
+ LANGUAGE plpgsql;
+
+--2_Trigger que capture las operaciones de inserción, actualización y
+ eliminación.--
+
+CREATE TRIGGER auditoria_empleados_trigger
+AFTER INSERT OR UPDATE OR DELETE ON empleados
+FOR EACH ROW
+EXECUTE FUNCTION registrar_auditoria();
+
+
+EJERCICIO 2
+
+--1_Función que verifica duplicados.--
+
+CREATE OR REPLACE FUNCTION verificar_duplicados()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Verificar si ya existe un empleado con el mismo nombre y puesto
+    IF EXISTS (
+        SELECT 1 
+        FROM empleados 
+        WHERE nombre = NEW.nombre AND puesto = NEW.puesto
+    ) THEN
+        RAISE EXCEPTION 'Ya existe un empleado con el nombre "%" y puesto "%".', NEW.nombre, NEW.puesto;
+    END IF;
+
+    RETURN NEW; -- Permitir la inserción si no hay duplicados
+END;
+$$
+ LANGUAGE plpgsql;
+
+--2_Trigger asociado a esta función.--
+
+CREATE TRIGGER evitar_duplicados_trigger
+BEFORE INSERT ON empleados
+FOR EACH ROW
+EXECUTE FUNCTION verificar_duplicados();
+
+
+EJERCICIO 3
+
+--1_Función que revise y actualice el salario antes de la inserción.--
+
+CREATE OR REPLACE FUNCTION actualizar_salario()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Verificar si el salario es menor que 1000
+    IF NEW.salario < 1000 THEN
+        NEW.salario := 1000; -- Asignar el salario mínimo
+    END IF;
+
+    RETURN NEW; -- Devolver el nuevo registro modificado
+END;
+$$
+ LANGUAGE plpgsql;
+
+--2_Trigger que utilice esta función.--
+
+CREATE TRIGGER actualizar_salario_trigger
+BEFORE INSERT ON empleados
+FOR EACH ROW
+EXECUTE FUNCTION actualizar_salario();
+
+
+EJERCICIO 4
+
+--1_Añadir la columna ultima_modificacion a la tabla.--
+
+ALTER TABLE empleados
+ADD COLUMN ultima_modificacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+
+--2_Función que actualice este campo.--
+
+CREATE OR REPLACE FUNCTION actualizar_ultima_modificacion()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.ultima_modificacion := CURRENT_TIMESTAMP; -- Asignar la fecha y hora actuales
+    RETURN NEW; -- Devolver el nuevo registro modificado
+END;
+$$
+ LANGUAGE plpgsql;
+
+--3_Trigger que ejecute esta función en cada actualización.--
+
+CREATE TRIGGER actualizar_fecha_modificacion_trigger
+BEFORE UPDATE ON empleados
+FOR EACH ROW
+EXECUTE FUNCTION actualizar_ultima_modificacion();
+
+
+EJERCICIO 5
+
+ CREATE TABLE estadisticas_empresa (
+ id SERIAL PRIMARY KEY,
+ total_empleados INT DEFAULT 0
+ );
+
+--1_ función que actualice el contador en la tabla estadisticas_empresa.--
+
+CREATE OR REPLACE FUNCTION incrementar_contador_empleados()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Incrementar el contador de empleados en estadisticas_empresa
+    UPDATE estadisticas_empresa 
+    SET total_empleados = total_empleados + 1;
+
+    RETURN NEW; -- Devolver el nuevo registro
+END;
+$$
+ LANGUAGE plpgsql;
+
+--2_Trigger que ejecute esta función después de cada inserción.--
+
+CREATE TRIGGER incrementar_contador_trigger
+AFTER INSERT ON empleados
+FOR EACH ROW
+EXECUTE FUNCTION incrementar_contador_empleados();
